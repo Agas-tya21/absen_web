@@ -24,6 +24,12 @@ interface Kantor {
   namakantor: string;
 }
 
+interface User {
+  nik: string;
+  nama: string;
+  kantor: { namakantor: string; };
+}
+
 interface PivotedTransaksi {
   nik: string;
   nama: string;
@@ -32,6 +38,7 @@ interface PivotedTransaksi {
   jam_masuk: string;
   jam_pulang: string;
   jam_izin: string;
+  waktuKerja: string;
 }
 
 const API_URL = process.env.NEXT_PUBLIC_BACKEND_URL;
@@ -40,6 +47,7 @@ export default function LogActivity() {
   const [transaksis, setTransaksis] = useState<Transaksi[]>([]);
   const [statuses, setStatuses] = useState<Status[]>([]);
   const [kantors, setKantors] = useState<Kantor[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedStatus, setSelectedStatus] = useState("All");
@@ -47,38 +55,29 @@ export default function LogActivity() {
   const [searchTerm, setSearchTerm] = useState("");
 
   useEffect(() => {
-    async function fetchTransaksisAndStatusesAndKantors() {
+    async function fetchAllData() {
       try {
-        const transaksisResponse = await fetch(`${API_URL}/api/transaksis`);
-        if (!transaksisResponse.ok) {
-          if (transaksisResponse.status !== 204) {
-            throw new Error(`Error fetching transactions: ${transaksisResponse.statusText}`);
-          }
-        } else {
-          const data: Transaksi[] = await transaksisResponse.json();
-          setTransaksis(data);
-        }
+        const [transaksisResponse, statusesResponse, kantorsResponse, usersResponse] = await Promise.all([
+          fetch(`${API_URL}/api/transaksis`),
+          fetch(`${API_URL}/api/statuses`),
+          fetch(`${API_URL}/api/kantors`),
+          fetch(`${API_URL}/api/users`),
+        ]);
 
-        const statusesResponse = await fetch(`${API_URL}/api/statuses`);
-        if (!statusesResponse.ok) {
-          if (statusesResponse.status !== 204) {
-            throw new Error(`Error fetching statuses: ${statusesResponse.statusText}`);
-          }
-        } else {
-          const statusesData: Status[] = await statusesResponse.json();
-          setStatuses(statusesData);
-        }
+        if (!transaksisResponse.ok && transaksisResponse.status !== 204) throw new Error("Failed to fetch transactions.");
+        if (!statusesResponse.ok && statusesResponse.status !== 204) throw new Error("Failed to fetch statuses.");
+        if (!kantorsResponse.ok && kantorsResponse.status !== 204) throw new Error("Failed to fetch offices.");
+        if (!usersResponse.ok && usersResponse.status !== 204) throw new Error("Failed to fetch users.");
 
-        const kantorsResponse = await fetch(`${API_URL}/api/kantors`);
-        if (!kantorsResponse.ok) {
-          if (kantorsResponse.status !== 204) {
-            throw new Error(`Error fetching kantors: ${kantorsResponse.statusText}`);
-          }
-        } else {
-          const kantorsData: Kantor[] = await kantorsResponse.json();
-          setKantors(kantorsData);
-        }
+        const transaksisData: Transaksi[] = transaksisResponse.status === 204 ? [] : await transaksisResponse.json();
+        const statusesData: Status[] = statusesResponse.status === 204 ? [] : await statusesResponse.json();
+        const kantorsData: Kantor[] = kantorsResponse.status === 204 ? [] : await kantorsResponse.json();
+        const usersData: User[] = usersResponse.status === 204 ? [] : await usersResponse.json();
 
+        setTransaksis(transaksisData);
+        setStatuses(statusesData);
+        setKantors(kantorsData);
+        setUsers(usersData);
       } catch (e: unknown) {
         if (e instanceof Error) {
           setError(e.message);
@@ -90,7 +89,7 @@ export default function LogActivity() {
       }
     }
 
-    fetchTransaksisAndStatusesAndKantors();
+    fetchAllData();
   }, []);
   
   const statusCounts = useMemo(() => {
@@ -158,8 +157,8 @@ export default function LogActivity() {
   
   const groupedTransaksi = groupTransaksiByDate(finalFilteredTransaksis);
 
-  const handleExportToExcel = () => {
-    const uniqueTransaksis = finalFilteredTransaksis.reduce((acc, current) => {
+  const processDataForExport = (data: Transaksi[]) => {
+    const uniqueTransaksis = data.reduce((acc, current) => {
         const date = new Date(current.waktutransaksi).toLocaleDateString();
         const key = `${current.user.nik}-${date}-${current.aksi.namaaksi}`;
 
@@ -182,6 +181,7 @@ export default function LogActivity() {
                 jam_masuk: '',
                 jam_pulang: '',
                 jam_izin: '',
+                waktuKerja: ''
             };
         }
 
@@ -197,41 +197,124 @@ export default function LogActivity() {
         return acc;
     }, {} as Record<string, PivotedTransaksi>);
 
-    const exportData = Object.values(pivotedData);
+    const exportData = Object.values(pivotedData).map(item => {
+        if (item.jam_masuk && item.jam_pulang) {
+            const [jamMasuk, menitMasuk, detikMasuk] = item.jam_masuk.split(':').map(Number);
+            const [jamPulang, menitPulang, detikPulang] = item.jam_pulang.split(':').map(Number);
+            
+            const start = new Date(item.tanggal);
+            start.setHours(jamMasuk, menitMasuk, detikPulang);
+            
+            const end = new Date(item.tanggal);
+            end.setHours(jamPulang, menitPulang, detikPulang);
+            
+            const diffInMs = end.getTime() - start.getTime();
+            const diffInMinutes = Math.floor(diffInMs / (1000 * 60));
+            
+            const hours = Math.floor(diffInMinutes / 60);
+            const minutes = diffInMinutes % 60;
 
-    const header = [
-        "nik", "nama", "kantor", "tanggal", 
-        "Jam Masuk", "Jam Pulang", "Jam Izin"
-    ];
+            item.waktuKerja = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+        }
+        return item;
+    });
     
-    const csvHeader = header.map(e => `"${e}"`).join(';');
-    const csvBody = exportData.map(item => 
-        [
-            item.nik,
-            item.nama,
-            item.kantor,
-            item.tanggal,
-            item.jam_masuk,
-            item.jam_pulang,
-            item.jam_izin,
-        ].map(e => `"${e}"`).join(';')
-    ).join('\n');
-
-    const csvContent = "\uFEFF" + csvHeader + "\n" + csvBody;
-
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement("a");
-    if (link.download !== undefined) {
-      const url = URL.createObjectURL(blob);
-      link.setAttribute("href", url);
-      link.setAttribute("download", "log_activity.csv");
-      link.style.visibility = 'hidden';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    }
+    return exportData;
+  };
+  
+  const createCsvContent = (data: PivotedTransaksi[]) => {
+      const header = [
+        "nik", "nama", "kantor", "tanggal", 
+        "Jam Masuk", "Jam Pulang", "Jam Izin", "Waktu Kerja"
+      ];
+      const csvHeader = header.map(e => `"${e}"`).join(';');
+      const csvBody = data.map(item => 
+          [
+              item.nik,
+              item.nama,
+              item.kantor,
+              item.tanggal,
+              item.jam_masuk,
+              item.jam_pulang,
+              item.jam_izin,
+              item.waktuKerja
+          ].map(e => `"${e}"`).join(';')
+      ).join('\n');
+      return "\uFEFF" + csvHeader + "\n" + csvBody;
   };
 
+  const downloadFile = (filename: string, content: string) => {
+      const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement("a");
+      if (link.download !== undefined) {
+        const url = URL.createObjectURL(blob);
+        link.setAttribute("href", url);
+        link.setAttribute("download", filename);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      }
+  };
+
+  const handleExportToExcel = () => {
+    const exportData = processDataForExport(finalFilteredTransaksis);
+    const csvContent = createCsvContent(exportData);
+    downloadFile("log_activity.csv", csvContent);
+  };
+  
+  const handleExportAllToExcel = async () => {
+    const fileName = prompt("Masukkan nama file utama untuk ekspor:");
+
+    if (!fileName) {
+      return;
+    }
+    
+    const usersMap = new Map(users.map(u => [u.nik, u]));
+    const transactionsByUser = new Map<string, Transaksi[]>();
+    
+    transaksis.forEach(t => {
+      if (!transactionsByUser.has(t.user.nik)) {
+        transactionsByUser.set(t.user.nik, []);
+      }
+      transactionsByUser.get(t.user.nik)?.push(t);
+    });
+
+    const allUserNiks = new Set([...usersMap.keys(), ...transactionsByUser.keys()]);
+    
+    for (const nik of allUserNiks) {
+      const userTransactions = transactionsByUser.get(nik) || [];
+      
+      const user = usersMap.get(nik) || (userTransactions.length > 0 ? userTransactions[0].user : undefined);
+      
+      if (user) {
+        const exportData = processDataForExport(userTransactions);
+        
+        // Ensure there is at least one row for users with no transactions
+        if (exportData.length === 0) {
+          const emptyPivotedData: PivotedTransaksi = {
+              nik: user.nik,
+              nama: user.nama,
+              kantor: user.kantor.namakantor,
+              tanggal: '',
+              jam_masuk: '',
+              jam_pulang: '',
+              jam_izin: '',
+              waktuKerja: ''
+          };
+          exportData.push(emptyPivotedData);
+        }
+
+        const username = user.nama.replace(/[^a-zA-Z0-9]/g, '_');
+        const finalFilename = `${fileName}_${nik}_${username}.csv`;
+        const csvContent = createCsvContent(exportData);
+        downloadFile(finalFilename, csvContent);
+
+        // Wait for a short period before the next download
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+    }
+  };
 
   if (loading) return <div className="p-8 text-center">Loading...</div>;
   if (error) return <div className="p-8 text-center text-red-500">Error: {error}</div>;
@@ -308,7 +391,7 @@ export default function LogActivity() {
           </div>
         </div>
         
-        <div className="mb-4 flex justify-between items-center">
+        <div className="mb-4 flex justify-between items-center space-x-4">
             <input
                 type="text"
                 placeholder="Search by Nama or NIK..."
@@ -316,12 +399,20 @@ export default function LogActivity() {
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="p-2 border rounded-lg w-full md:w-1/3"
             />
-            <button 
-              onClick={handleExportToExcel}
-              className="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700"
-            >
-                Export to Excel
-            </button>
+            <div className="flex space-x-2">
+                <button 
+                  onClick={handleExportToExcel}
+                  className="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700"
+                >
+                    Export Filtered to Excel
+                </button>
+                <button
+                  onClick={handleExportAllToExcel}
+                  className="bg-purple-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-purple-700"
+                >
+                    Export All to Excel
+                </button>
+            </div>
         </div>
 
         <div className="overflow-x-auto bg-gray-100 rounded-lg shadow-md p-4">
