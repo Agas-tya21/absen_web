@@ -232,8 +232,8 @@ export default function UserUpdatePage() {
             keterangan: logFormData.keterangan,
             waktutransaksi: new Date().toISOString(),
             koordinat: logFormData.koordinat,
-            idaksi: logFormData.idaksi,
-            idstatus: logFormData.idstatus,
+            aksi: { idaksi: logFormData.idaksi },
+            status: { idstatus: logFormData.idstatus },
             user: { nik: nik }
         })], { type: 'application/json' }));
         if (fotoBuktiFile) {

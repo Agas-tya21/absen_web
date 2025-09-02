@@ -11,7 +11,7 @@ interface Transaksi {
   fotobukti: string;
   aksi: { namaaksi: string };
   status: { namastatus: string };
-  user: { nik: string; nama: string; kantor: { namakantor: string; }; };
+  user: { nik: string; nama: string; nohp: string; kantor: { namakantor: string; }; };
 }
 
 interface Status {
@@ -427,9 +427,11 @@ export default function LogActivity() {
                     <tr>
                       <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">NIK</th>
                       <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Nama</th>
+                      <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">No HP</th>
                       <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Aksi</th>
                       <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Keterangan</th>
                       <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Waktu Transaksi</th>
+                      <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Koordinat</th>
                       <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Status</th>
                       <th className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Foto Bukti</th>
                     </tr>
@@ -439,9 +441,33 @@ export default function LogActivity() {
                       <tr key={transaksi.idtransaksi}>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{transaksi.user.nik}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{transaksi.user.nama}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {transaksi.user.nohp && (
+                            <a 
+                              href={`https://wa.me/${transaksi.user.nohp.startsWith('0') ? '62' + transaksi.user.nohp.substring(1) : transaksi.user.nohp}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-blue-600 hover:underline"
+                            >
+                              {transaksi.user.nohp}
+                            </a>
+                          )}
+                        </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{transaksi.aksi.namaaksi}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{transaksi.keterangan}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{new Date(transaksi.waktutransaksi).toLocaleTimeString()}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {transaksi.koordinat && (
+                            <a
+                              href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(transaksi.koordinat)}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-blue-600 hover:underline"
+                            >
+                              {transaksi.koordinat}
+                            </a>
+                          )}
+                        </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{transaksi.status.namastatus}</td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           {transaksi.fotobukti && (
